@@ -1,0 +1,269 @@
+<?php
+/**
+ * Filename: template_buttons_content.php
+ *
+ * Gets a JSON-encoded object that contains the following functionality:
+ *  1. JavaScript: creates click events for each of the buttons:
+ *                  on clicking #help, creates a pop-up dialog with helpful information;
+ *                  on clicking #reset_template, creates a pop-up dialog which allows user to reset everything,
+ *                  on clicking #finalize_template, sends data to create_new_template.php or update_template.php
+ *                      (depending on whether the user wants to create a new template or update an old one)
+ *  2. HTML: creates buttons:
+ *              #help for user to seek help ,
+ *              #reset_template for user to reset what has been entered so far,
+ *              #update_template for user to update an already-created template
+ *  3. CSS: defines the styling properties of the HTML
+ */
+require_once('LoadableContent.php');
+require_once('Template.php');
+session_start();
+
+$template_select_key = Template::TEMPLATE_SELECT_KEY;
+$template_id_key = Template::TEMPLATE_ID_KEY;
+$template_name_key = Template::TEMPLATE_NAME_KEY;
+$template_body_key = Template::TEMPLATE_BODY_KEY;
+
+$js = <<<JS
+// Resets all content when button #reset_template is clicked
+$('#help').click(function(){
+    $('#help_dialog').dialog({
+        width: 600,
+        modal: true,
+        buttons: {
+            "Got it, thanks!": function() {
+                $('#help_dialog').dialog('close'); 
+            }
+        }
+    });
+    
+    $('#help_accordion').accordion({
+      collapsible: true,
+      heightStyle: "content"
+    });
+});
+
+// Resets all content when button #reset_template is clicked
+$('#reset_template').click(function(){
+    if ($('#{$template_select_key}').children("option:selected").val() == -1) { 
+        $('#reset_dialog').dialog({
+            resizable: false,
+            width: 800,
+            modal: true,
+            buttons: {
+                "Clear everything": function() {
+                    // clear template name, body, and tags
+                    clearTemplateName();
+                    clearTemplateBody();
+                    clearTags();
+                    // close the dialog
+                    $('#reset_dialog').dialog('close');
+                },
+                "Cancel": function() {
+                    // close the dialog
+                    $('#reset_dialog').dialog('close'); 
+                }
+            }
+        });
+    } else { // adding the option to load the last-saved version of template if user is not creating a template
+        $('#reset_dialog').dialog({
+            resizable: false,
+            width: 800,
+            modal: true,
+            buttons: {
+                "Load the last-saved version of this template": function() {
+                    // load the template name and body from the database
+                    loadTemplateName();
+                    loadTemplateBody();
+                    // close the dialog
+                    $('#reset_dialog').dialog('close');
+                },
+                "Clear everything": function() {
+                    // clear template name, body, and tags
+                    clearTemplateName();
+                    clearTemplateBody();
+                    clearTags();
+                    // close the dialog
+                    $('#reset_dialog').dialog('close');
+                },
+                "Cancel": function() {
+                    // close the dialog
+                    $('#reset_dialog').dialog('close'); 
+                }
+            }
+        });
+    }
+});
+
+
+// Sends the user input into the database
+$('#finalize_template').click(function(){
+    if ($('#{$template_select_key}').children("option:selected").val() == -1) {
+        $.post(
+            'http://' + location.hostname + location.pathname.substr(0, location.pathname.lastIndexOf('/')) + '/includes/actions/create_new_template.php',
+            $('#{$template_name_key}').serialize() + '&' + decodeURI($('#{$template_body_key}').serialize()),
+            function(data) {
+                // clears the previous instance of a result message
+                $('#result_message').remove();
+                // displays the result message
+                $('#template_select_area').before(data.message);
+                // scrolls to the result message
+                $([document.documentElement, document.body]).animate({
+                    scrollTop: $("#result_message").offset().top
+                }, 500);
+            }
+        );
+        // reloading the template select list to add the new template
+        loadContent(
+            "includes/template_select_content.php", 
+            function() {
+                // calls loadTemplateNames function in template_select_content.php
+                loadTemplateNames();
+            },
+            // assigns HTML generated by template_select_content.php to div #template_select_area
+            "#template_select_area"
+        );
+    } else {
+        // posts #template_select, #template_name, & #template_body data to create_new_template.php and gets data on the result 
+        $.post(
+            'http://' + location.hostname + location.pathname.substr(0, location.pathname.lastIndexOf('/')) + '/includes/actions/update_template.php',
+            $('#{$template_select_key}').serialize() + '&' + $('#{$template_name_key}').serialize() + '&' + decodeURI($('#{$template_body_key}').serialize()),
+            function(data) {
+                // clears the previous instance of a result message
+                $("#result_message").remove();
+                // displays the result message
+                $('#template_select_area').before(data.message);
+                // scrolls to the result message
+                $([document.documentElement, document.body]).animate({
+                    scrollTop: $("#result_message").offset().top
+                }, 500);
+            }
+        )
+    }
+});
+
+// Sends the user input into the database
+$('#delete_template').click(function(){
+    if ($('#{$template_select_key}').children("option:selected").val() == -1) {
+        $('#cannot_delete_dialog').dialog({
+            width: 600,
+            modal: true,
+            buttons: {
+                "OK!": function() {
+                    $('#cannot_delete_dialog').dialog('close'); 
+                }
+            }
+        });
+    } else {
+        $('#delete_dialog').dialog({
+            width: 600,
+            modal: true,
+            buttons: {
+                "Delete this template": function() {
+                    // posts #template_select, #template_name, & #template_body data to create_new_template.php and gets data on the result 
+                    $.post(
+                        'http://' + location.hostname + location.pathname.substr(0, location.pathname.lastIndexOf('/')) + '/includes/actions/delete_template.php',
+                        $('#{$template_select_key}').serialize(),
+                        function(data) {
+                            location.reload();
+                        }
+                    );
+                    $('#delete_dialog').dialog('close'); 
+                },
+                "Cancel": function() {
+                    $('#delete_dialog').dialog('close'); 
+                } 
+            }
+        });
+    }
+});
+JS;
+$html = <<<HTML
+<div class="input-group mb-3 col">
+    <button type="button" name="help" id="help" class="btn btn-primary btn-lg btn-block">Need Help?</button>
+</div>
+<div id="help_dialog" title="Template Editor Help">
+    <h3>Using the Template Editor</h3>
+    <p>Welcome to the Template Editor! Here, you can modify an existing template, or create a new one altogether.</p>    
+    <div id="help_accordion">
+        <h3>Creating a template</h3>
+        <div>
+            <ol>
+                <li>Type a name for the template you're creating in the "Template Name" area. Try to make it as
+                    meaningful as you can!</li>
+                <li>Type the content of the template you're creating. Here, you can add tags if you like. (Refer to the 
+                    "Adding tags" section for more on this!)</li>
+                <li>After you're done, click the "Save Template!" button to save the template.</li>
+            </ol>
+        </div>
+        <h3>Modifying a template</h3>
+        <div>
+            <ol>
+                <li>Click on "Create A New Template" in the "Choose A Template" Area. This will open a list of templates
+                    that were already created earlier. </li>
+                <li>Choose one of those options and press the "OK!" button.</li>
+                <li>You can now edit the template name and body as you like.</li>
+                <li>After you're done, click the "Save Template!" button to save the template.</li>
+            </ol>
+        </div>
+        <h3>Adding tags</h3>
+        <div>
+            <p>In the Template Body field, words surrounded by square brackets ("&lsqb;" and "&rsqb;") are placeholders for the content
+                that staff members will enter when sending a notification. For instance, "&lsqb;pantry location&rsqb;" is a placeholder, and it will
+                be later filled in by a location of a staff member's choice when he/she sends a notification with the template. A sentence
+                in the Template Body field that reads "There's free food at &lsqb;pantry location&rsqb;!" could later be replaced by "There's free food at
+                Cascade Campus!", "There's free food at Rock Creek Campus!" "There's free food at Sylvania Campus!", or 
+                "There's free food at Southeast Campus!", depending on which pantry location a staff member picks when he/she is sending a 
+                notification.
+             </p>
+                
+             <p>When choosing the contents of a tag, please keep clarity and conciseness in mind. Examples of good tags are:</p>
+             <ul>
+                <li>&lsqb;pantry location&rsqb;</li>
+                <li>&lsqb;current date&rsqb;</li>
+                <li>&lsqb;end availability date and time&rsqb;</li>
+             </ul>
+        </div>
+    </div>
+</div>
+<div class="input-group mb-3 col">
+    <button type="button" name="reset_template" id="reset_template" class="btn btn-primary btn-lg btn-block">Start Over</button>
+</div>
+<div id="reset_dialog" title="Reset Template Content">
+    <h6>Choose one of the options below. You will not be able to undo this action.</h6>
+</div>
+<div class="input-group mb-3 col">
+    <button type="button" name="finalize_template" id="finalize_template" class="btn btn-primary btn-lg btn-block">Save Template!</button>
+</div> 
+<div class="input-group mb-3 col">
+    <button type="button" name="delete_template" id="delete_template" class="btn btn-primary btn-lg btn-block">Delete Template</button>
+</div>   
+<div id="delete_dialog" title="Delete this template?">
+    <h6>Are you sure you want to delete this template? This action cannot be undone. The page will reload after you press the 'Delete this template' button.</h6>
+</div>     
+<div id="cannot_delete_dialog" title="Can't Delete">
+    <h6>Since you're creating a new template, you can't delete it. Choose a particular template to delete, or click the 'Start Over' button to undo all of your work so far.</h6>
+</div>     
+HTML;
+$css = <<<CSS
+#result_message {
+    background-color: #e9ecef;
+    color: #495057;
+    text-align: center;
+    border-radius: 25px;
+    border: 1px solid #ced4da;
+    padding: 10px;
+    width: 90%;
+    display: block;
+    margin: 0.3em auto 1em auto;
+}
+.ui-dialog-titlebar-close {
+    display: none;
+}
+#help_dialog, #reset_dialog, #cannot_delete_dialog, #delete_dialog {
+    display: none;
+    line-height: 1.8em;
+}
+CSS;
+
+$obj = new LoadableContent($js, $html, $css);
+$obj->load();
